@@ -1,17 +1,20 @@
 #!/bin/bash
 
-# 1. Download Flutter from Google
-git clone https://github.com/flutter/flutter.git -b stable
+# 1. Faster Clone (only gets the latest version, not the whole history)
+git clone --depth 1 https://github.com/flutter/flutter.git -b stable
 
-# 2. Add Flutter to the path so the computer can find it
+# 2. Add to Path
 export PATH="$PATH:`pwd`/flutter/bin"
 
-# 3. Enable Web support
-flutter config --enable-web
+# 3. Suppress the "Root User" warning and skip analytics to save time
+export FLUTTER_NO_ANALYTICS=1
+export PUB_CACHE=".pub-cache"
 
-# 4. Build the app (using the canvaskit renderer for better images)
+# 4. Enable Web and Build
+flutter config --no-analytics
+flutter config --enable-web
 flutter build web --release --web-renderer canvaskit
 
-# 5. Move the finished product to the folder Vercel expects
+# 5. Move files
 mkdir -p public
 cp -r build/web/* public
