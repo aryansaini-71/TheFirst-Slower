@@ -18,3 +18,7 @@ flutter build web --release --web-renderer canvaskit
 # 5. Move files
 mkdir -p public
 cp -r build/web/* public
+
+flutter build web --release --web-renderer canvaskit
+mkdir -p public
+cp -r build/web/* public
