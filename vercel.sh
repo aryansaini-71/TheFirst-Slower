@@ -19,6 +19,4 @@ flutter build web --release --web-renderer canvaskit
 mkdir -p public
 cp -r build/web/* public
 
-flutter build web --release --web-renderer canvaskit
-mkdir -p public
-cp -r build/web/* public
+flutter build web --release --web-renderer html --no-tree-shake-icons
