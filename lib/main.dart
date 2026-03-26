@@ -262,12 +262,27 @@ class _SlowerHomeState extends State<SlowerHome> {
                           child: Image.network(
                             memeUrl,
                             fit: BoxFit.contain,
+                            // THE BACKUP PLAN: This helps the browser trust the image source
+                            headers: const {"Access-Control-Allow-Origin": "*"},
+                            // This keeps the previous image visible while the new one loads
+                            gaplessPlayback: true,
                             frameBuilder: (context, child, frame, wasLoaded) {
                               if (wasLoaded) return child;
                               return AnimatedOpacity(
                                 opacity: frame == null ? 0 : 1,
                                 duration: const Duration(milliseconds: 500),
                                 child: child,
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              return const Center(
+                                child: Text(
+                                  "Meme is shy... try changing category!",
+                                  style: TextStyle(
+                                    color: Colors.brown,
+                                    fontSize: 12,
+                                  ),
+                                ),
                               );
                             },
                           ),
