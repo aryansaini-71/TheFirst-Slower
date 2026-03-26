@@ -82,10 +82,8 @@ class _SlowerHomeState extends State<SlowerHome> {
         );
 
         setState(() {
-          // FIXED: Using string interpolation ${} instead of +
-          // Use the 'cors-proxy.htmldriven.com' bridge - it is very friendly to Flutter
           memeUrl =
-              "https://cors-proxy.htmldriven.com/?url=${Uri.encodeComponent(selectedMeme['url'])}";
+              "https://corsproxy.io/?${Uri.encodeComponent(selectedMeme['url'])}";
           memeTitle =
               "${selectedMeme['title'].toUpperCase()} (${selectedMeme['ups']} 👍)";
         });

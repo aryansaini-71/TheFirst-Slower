@@ -18,6 +18,10 @@ export FLUTTER_NO_ANALYTICS=1
 ./flutter/bin/flutter pub get
 ./flutter/bin/flutter build web --release
 
+
 # 6. Move to public
 mkdir -p public
 cp -r build/web/* public/
+
+# ADD THIS LINE: This copies the permission file to your live site
+cp _headers public/
