@@ -2,10 +2,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-void main() {
+// 1. THIS IS THE ONLY MAIN FUNCTION - It initializes the connection to your warehouse
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Supabase.initialize(
+    url: 'https://pkstzxkoyzcrlsybaums.supabase.co',
+    anonKey:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBrc3R6eGtveXpjcmxzeWJhdW1zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwNjY2MTEsImV4cCI6MjA5MjY0MjYxMX0.-MZufmWstt8VkUW7hiplX1tTANVtLa99FjGECntg0ug',
+  );
+
   runApp(const SlowerApp());
 }
 
@@ -31,13 +39,10 @@ class SlowerHome extends StatefulWidget {
 class _SlowerHomeState extends State<SlowerHome> {
   String memeUrl = "";
   String memeTitle = "TAKE A DEEP BREATH...";
-
   String? nextMemeUrl;
   String? nextMemeTitle;
-
   String timeRemaining = "00:00";
   Timer? _timer;
-
   int categoryIndex = 0;
   List<String> categories = [
     "memes",
@@ -59,68 +64,57 @@ class _SlowerHomeState extends State<SlowerHome> {
     prefetchNextMeme();
   }
 
+  // --- FETCHING WITH ROTATING PROXY ---
   Future<void> fetchMeme() async {
     setState(() {
       memeUrl = "";
-      memeTitle = "FINDING A BANGER...";
+      memeTitle = "OPENING THE WAREHOUSE...";
     });
 
     try {
-      final category = categories[categoryIndex];
-      final response = await http.get(
-        Uri.parse('https://meme-api.com/gimme/$category/10'),
-      );
+      final supabase = Supabase.instance.client;
+      final data = await supabase
+          .from('memes')
+          .select()
+          .eq('category', categories[categoryIndex])
+          .order('id', ascending: false)
+          .limit(1)
+          .maybeSingle();
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        List allMemes = data['memes'];
-
-        allMemes.sort((a, b) => b['ups'].compareTo(a['ups']));
-        var selectedMeme = allMemes.firstWhere(
-          (m) => m['ups'] >= 4000,
-          orElse: () => allMemes[0],
-        );
-
+      if (data != null) {
+        String originalUrl = data['url'];
         setState(() {
-          memeUrl =
-              "https://corsproxy.io/?${Uri.encodeComponent(selectedMeme['url'])}";
-          memeTitle =
-              "${selectedMeme['title'].toUpperCase()} (${selectedMeme['ups']} 👍)";
+          // We switch to 'wsrv.nl' - it's a high-speed image proxy that is GREAT for Flutter
+          memeUrl = "https://wsrv.nl/?url=${Uri.encodeComponent(originalUrl)}";
+          memeTitle = "${data['title'].toUpperCase()} (${data['ups']} 👍)";
         });
+      } else {
+        setState(() => memeTitle = "CATEGORY EMPTY! RUN THE BOT.");
       }
     } catch (e) {
-      setState(() => memeTitle = "OFFLINE... ENJOY THE SILENCE");
+      setState(() => memeTitle = "WAREHOUSE ERROR: CHECK CONNECTION");
     }
   }
 
   Future<void> prefetchNextMeme() async {
     try {
-      final category = categories[categoryIndex];
-      final response = await http.get(
-        Uri.parse('https://meme-api.com/gimme/$category/10'),
-      );
+      final supabase = Supabase.instance.client;
+      final data = await supabase
+          .from('memes')
+          .select()
+          .eq('category', categories[categoryIndex])
+          .limit(1)
+          .maybeSingle();
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        List allMemes = data['memes'];
-        allMemes.sort((a, b) => b['ups'].compareTo(a['ups']));
-        var selectedMeme = allMemes.firstWhere(
-          (m) => m['ups'] >= 4000,
-          orElse: () => allMemes[0],
-        );
-
-        // FIXED: Using string interpolation ${} and correct variable name
+      if (data != null && mounted) {
+        // Use the same wsrv.nl proxy here
         nextMemeUrl =
-            "https://api.allorigins.win/raw?url=${Uri.encodeComponent(selectedMeme['url'])}";
-        nextMemeTitle =
-            "${selectedMeme['title'].toUpperCase()} (${selectedMeme['ups']} 👍)";
-
-        if (mounted) {
-          precacheImage(NetworkImage(nextMemeUrl!), context);
-        }
+            "https://wsrv.nl/?url=${Uri.encodeComponent(data['url'])}";
+        nextMemeTitle = "${data['title'].toUpperCase()} (${data['ups']} 👍)";
+        precacheImage(NetworkImage(nextMemeUrl!), context);
       }
     } catch (e) {
-      debugPrint("Prefetch status: Waiting for next drop");
+      debugPrint("Prefetch status: Waiting for drop");
     }
   }
 
@@ -140,23 +134,18 @@ class _SlowerHomeState extends State<SlowerHome> {
     }
   }
 
-  void _vibrate() {
-    HapticFeedback.lightImpact();
-  }
+  void _vibrate() => HapticFeedback.lightImpact();
 
   void _startTimer() {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       DateTime now = DateTime.now();
-      if (now.minute % 10 == 0 && now.second == 0) {
-        handleSkip();
-      }
+      if (now.minute % 10 == 0 && now.second == 0) handleSkip();
 
       setState(() {
-        int minutesUntilNextDrop = 9 - (now.minute % 10);
-        int secondsUntilNextDrop = 59 - now.second;
-        String m = minutesUntilNextDrop.toString().padLeft(2, '0');
-        String s = secondsUntilNextDrop.toString().padLeft(2, '0');
-        timeRemaining = "$m:$s";
+        int mUntil = 9 - (now.minute % 10);
+        int sUntil = 59 - now.second;
+        timeRemaining =
+            "${mUntil.toString().padLeft(2, '0')}:${sUntil.toString().padLeft(2, '0')}";
       });
     });
   }
@@ -184,7 +173,6 @@ class _SlowerHomeState extends State<SlowerHome> {
               ),
             ),
             const SizedBox(height: 15),
-
             GestureDetector(
               onTap: () {
                 _vibrate();
@@ -214,9 +202,7 @@ class _SlowerHomeState extends State<SlowerHome> {
                 ),
               ),
             ),
-
             const SizedBox(height: 10),
-
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: Text(
@@ -229,7 +215,6 @@ class _SlowerHomeState extends State<SlowerHome> {
                 ),
               ),
             ),
-
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(
@@ -246,7 +231,7 @@ class _SlowerHomeState extends State<SlowerHome> {
                   child: memeUrl.isEmpty
                       ? const Center(
                           child: Text(
-                            "Loading high-quality meme...",
+                            "Loading from warehouse...",
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Colors.brown,
@@ -260,35 +245,22 @@ class _SlowerHomeState extends State<SlowerHome> {
                           child: Image.network(
                             memeUrl,
                             fit: BoxFit.contain,
-                            // THE BACKUP PLAN: This helps the browser trust the image source
-                            headers: const {"Access-Control-Allow-Origin": "*"},
-                            // This keeps the previous image visible while the new one loads
                             gaplessPlayback: true,
-                            frameBuilder: (context, child, frame, wasLoaded) {
-                              if (wasLoaded) return child;
-                              return AnimatedOpacity(
-                                opacity: frame == null ? 0 : 1,
-                                duration: const Duration(milliseconds: 500),
-                                child: child,
-                              );
-                            },
-                            errorBuilder: (context, error, stackTrace) {
-                              return const Center(
-                                child: Text(
-                                  "Meme is shy... try changing category!",
-                                  style: TextStyle(
-                                    color: Colors.brown,
-                                    fontSize: 12,
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Center(
+                                  child: Text(
+                                    "Meme is shy... check proxy!",
+                                    style: TextStyle(
+                                      color: Colors.brown,
+                                      fontSize: 12,
+                                    ),
                                   ),
                                 ),
-                              );
-                            },
                           ),
                         ),
                 ),
               ),
             ),
-
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 30),
               padding: const EdgeInsets.all(20),
@@ -319,19 +291,14 @@ class _SlowerHomeState extends State<SlowerHome> {
                 ),
               ),
             ),
-
             const SizedBox(height: 15),
-
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 30),
               child: SizedBox(
                 width: double.infinity,
                 height: 55,
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    _vibrate();
-                    debugPrint("Sharing...");
-                  },
+                  onPressed: () => debugPrint("Sharing..."),
                   icon: const Icon(
                     Icons.share_outlined,
                     color: Colors.white,
@@ -351,9 +318,7 @@ class _SlowerHomeState extends State<SlowerHome> {
                 ),
               ),
             ),
-
             const SizedBox(height: 10),
-
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 30),
               child: SizedBox(
