@@ -9,52 +9,46 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def ghost_hunt():
-    # These match your main.dart categories exactly
     categories = ["memes", "wholesomememes", "historymemes", "sciencememes"]
-    
-    # We pretend to be a real Windows Chrome browser to avoid Error 403
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
         'Accept': 'application/json'
     }
 
     for cat in categories:
-        print(f"--- Ghost Hunting in r/{cat} ---")
+        print(f"--- Hunting in r/{cat} ---")
+        # Increase limit to 25 to find more potential images
+        url = f"https://www.reddit.com/r/{cat}/hot.json?limit=25"
         
-        # We add a 2-second sleep so Reddit doesn't think we are a fast bot
-        time.sleep(2) 
-
-        url = f"https://www.reddit.com/r/{cat}/hot.json?limit=10"
         try:
             response = requests.get(url, headers=headers)
-            
             if response.status_code == 200:
                 posts = response.json()['data']['children']
+                count = 0
                 for post in posts:
                     data = post['data']
                     img_url = data.get('url', '')
-                    
-                    # IMPORTANT: Only grab direct image files (.jpg, .png)
-                    # This prevents the 'Meme is shy' error in Flutter!
+
                     if img_url.lower().endswith(('jpg', 'png', 'jpeg')):
-                        
-                        # Check if we already have this meme in the warehouse
+                        # Check for duplicates
                         check = supabase.table("memes").select("url").eq("url", img_url).execute()
                         
                         if not check.data:
-                            meme_entry = {
+                            supabase.table("memes").insert({
                                 "title": data['title'],
                                 "url": img_url,
                                 "ups": data['ups'],
                                 "category": cat
-                            }
-                            supabase.table("memes").insert(meme_entry).execute()
-                            print(f"✅ Stored: {data['title'][:30]}...")
-                            break # Found the top image, move to next category
-            else:
-                print(f"❌ Error {response.status_code} reaching r/{cat}")
+                            }).execute()
+                            count += 1
+                            print(f"✅ [{count}/10] Stored: {data['title'][:20]}...")
+                    
+                    # Stop after 10 memes per category
+                    if count >= 10:
+                        break
+            time.sleep(2) # Be kind to Reddit's servers
         except Exception as e:
-            print(f"❌ Failed to connect: {e}")
+            print(f"❌ Error in r/{cat}: {e}")
 
 if __name__ == "__main__":
     print("Starting the hunt...")
@@ -63,19 +57,16 @@ if __name__ == "__main__":
 
 from datetime import datetime, timedelta, timezone
 
-def clean_warehouse():
-    print("--- Cleaning the Warehouse ---")
-    # 1. Calculate the 'cutoff' time (e.g., memes older than 1 day)
-    cutoff = datetime.now(timezone.utc) - timedelta(days=1)
-    
-    # 2. Tell Supabase to delete anything older than that
-    try:
-        response = supabase.table("memes").delete().lt("created_at", cutoff.isoformat()).execute()
-        print(f"🧹 Janitor: Removed old memes.")
-    except Exception as e:
-        print(f"⚠️ Janitor was sleepy: {e}")
+from datetime import datetime, timedelta, timezone
 
-# Update your main block to include the cleanup
-if __name__ == "__main__":
-    clean_warehouse() # Clean first
-    ghost_hunt()      # Then hunt
+def clean_old_memes():
+    print("--- 🧹 Cleaning the Warehouse ---")
+    # Memes older than 24 hours are deleted
+    time_threshold = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    
+    try:
+        # Delete rows where created_at is less than 24 hours ago
+        supabase.table("memes").delete().lt("created_at", time_threshold).execute()
+        print("✅ Janitor: Old memes removed.")
+    except Exception as e:
+        print(f"⚠️ Janitor error: {e}")
